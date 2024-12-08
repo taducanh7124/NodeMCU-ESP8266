@@ -1,0 +1,110 @@
+#include <ESP8266WiFi.h>
+#include <WiFiClientSecure.h> 
+#include <Wire.h>
+#include <RTClib.h>
+#include <DHT.h>
+// Wi-Fi credentials
+const char* ssid = "Cat";
+const char* password = "cuato12345";
+// Google Script credentials
+const char* host = "script.google.com";
+const char* AppsScriptID = "AKfycbxe674CYCWcCIdLuHJ1ZZu_0FDbqYCt9nk7h9x_Xejx_9abmLiz7HlkwBb5Srcqb2rQ9w";
+const int httpsPort = 443;
+//HTTP POST REQUEST payload
+String payload = "";
+String payload_base = "{\"command\": \"insert_row\", \"sheet_name\": \"Sheet1\", \"values\": ";
+///Client setup
+WiFiClientSecure client;
+// DS1307 RTC setup
+RTC_DS1307 rtc;
+char DateTimeFormat[20];
+// DHT22 setup
+DHT dht(D3, DHT22);
+//Sensor data setup
+float temp = 0;
+float hum = 0;
+int rainf = 0;
+float winds = 0;
+//Set up function
+void setup() {
+  Serial.begin(9600);
+  //Connect wifi
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+  }
+  //Set up request
+  client.setInsecure(); // Ignore SSL certificate validation
+  //Set up time
+  Wire.begin(D2, D1);
+  rtc.begin();
+  rtc.adjust(DateTime(__DATE__, __TIME__) + TimeSpan(0, 0, 0, 29));
+  //Set up DHT22 sensor
+  dht.begin(); // Initialize DHT22 sensor
+}
+//Loop function
+void loop() {
+  getDateTime();
+  getTemp();
+  getHum();
+  getRainf();
+  getWinds();
+  POSTRequest();
+  printData();
+  delay(7000); // Wait for 7 seconds before sending the next set of data
+}
+//Get date and time from DS1302
+void getDateTime() {
+  DateTime now = rtc.now();
+  // Format date and time
+  sprintf(DateTimeFormat, "%02d/%02d/%04d %02d:%02d:%02d",
+    now.day(), now.month(), now.year(), now.hour(), now.minute(), now.second());
+}
+//Get temperature data from sensor
+void getTemp() {
+  temp = dht.readTemperature();
+}
+//Get humidity data from sensor
+void getHum() {
+  hum = dht.readHumidity();
+}
+//Get rain fall data from sensor
+void getRainf() {
+  rainf = random(0, 11);
+}
+//Get wind speed data from sensor
+void getWinds() {
+  winds = random(0, 21);
+}
+//HTTP POST Request
+void POSTRequest() {
+  // Connect to Google Script endpoint
+  if (!client.connected()) {
+    client.connect(host, httpsPort);
+  }
+  //Payload content
+  payload = payload_base + "\"" + DateTimeFormat + "," + temp + "," + hum + "," + rainf + "," + winds + "\"}";
+  //Send data
+  client.print(String("POST ") + "/macros/s/" + AppsScriptID + "/exec" + " HTTP/1.1\r\n" +
+               "Host: " + host + "\r\n" +
+               "Content-Type: application/json\r\n" +
+               "Content-Length: " + payload.length() + "\r\n" +
+               "Connection: close\r\n\r\n" +
+               payload);
+  client.stop();
+}
+//Print data
+void printData() {
+  Serial.print("Payload: ");
+  Serial.println(payload);
+  Serial.print("Date and Time: ");
+  Serial.println(DateTimeFormat);
+  Serial.print("Tempareture: ");
+  Serial.println(temp);
+  Serial.print("Humidity: ");
+  Serial.println(hum);
+  Serial.print("Rall fall: ");
+  Serial.println(rainf);
+  Serial.print("Wind speed: ");
+  Serial.println(winds);
+}
